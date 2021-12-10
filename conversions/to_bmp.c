@@ -84,7 +84,7 @@ static bool _rgb_write(void * arg, uint16_t x, uint16_t y, uint16_t w, uint16_t 
             //write start
             jpeg->width = w;
             jpeg->height = h;
-	    //if output is null, this is BMP
+            //if output is null, this is BMP
             if(!jpeg->output){
                 jpeg->output = (uint8_t *)_malloc((w*h*3)+jpeg->data_offset);
                 if(!jpeg->output){
@@ -214,7 +214,7 @@ bool jpg2bmp(const uint8_t *src, size_t src_len, uint8_t ** out, size_t * out_le
     jpeg.width = 0;
     jpeg.height = 0;
     jpeg.input = src;
-    jpeg.output = *out;
+    jpeg.output = NULL;
     jpeg.data_offset = BMP_HEADER_LEN;
 
     if(esp_jpg_decode(src_len, JPG_SCALE_NONE, _jpg_read, _rgb_write, (void*)&jpeg) != ESP_OK){
