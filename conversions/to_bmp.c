@@ -84,7 +84,7 @@ static bool _rgb_write(void * arg, uint16_t x, uint16_t y, uint16_t w, uint16_t 
             //write start
             jpeg->width = w;
             jpeg->height = h;
-            //if output is null, this is BMP
+	    //if output is null, this is BMP
             if(!jpeg->output){
                 jpeg->output = (uint8_t *)_malloc((w*h*3)+jpeg->data_offset);
                 if(!jpeg->output){
@@ -214,7 +214,7 @@ bool jpg2bmp(const uint8_t *src, size_t src_len, uint8_t ** out, size_t * out_le
     jpeg.width = 0;
     jpeg.height = 0;
     jpeg.input = src;
-    jpeg.output = NULL;
+    jpeg.output = *out;
     jpeg.data_offset = BMP_HEADER_LEN;
 
     if(esp_jpg_decode(src_len, JPG_SCALE_NONE, _jpg_read, _rgb_write, (void*)&jpeg) != ESP_OK){
@@ -390,4 +390,91 @@ bool fmt2bmp(uint8_t *src, size_t src_len, uint16_t width, uint16_t height, pixf
 bool frame2bmp(camera_fb_t * fb, uint8_t ** out, size_t * out_len)
 {
     return fmt2bmp(fb->buf, fb->len, fb->width, fb->height, fb->format, out, out_len);
+}
+
+//output buffer and image width
+static bool _rgb_write_preallocated(void * arg, uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t *data)
+{
+    rgb_jpg_decoder * jpeg = (rgb_jpg_decoder *)arg;
+    if(!data){
+        if(x == 0 && y == 0){
+            //write start
+            jpeg->width = w;
+            jpeg->height = h;
+        } else {
+            //write end
+        }
+        return true;
+    }
+
+    size_t jw = jpeg->width*3;
+    size_t t = y * jw;
+    size_t b = t + (h * jw);
+    size_t l = x * 3;
+    uint8_t *out = jpeg->output+jpeg->data_offset;
+    uint8_t *o = out;
+    size_t iy, ix;
+
+    w = w * 3;
+
+    for(iy=t; iy<b; iy+=jw) {
+        o = out+iy+l;
+        for(ix=0; ix<w; ix+= 3) {
+            o[ix] = data[ix+2];
+            o[ix+1] = data[ix+1];
+            o[ix+2] = data[ix];
+        }
+        data+=w;
+    }
+    return true;
+}
+
+// Writes data to a preallocated buffer instead of allocating on the spot
+bool jpg2bmp_preallocated(camera_fb_t *fb, uint8_t *out) {
+    uint8_t *src = (uint8_t*)fb->buf;
+
+    size_t src_len = fb->len;
+    rgb_jpg_decoder jpeg;
+    jpeg.width = 0;
+    jpeg.height = 0;
+    jpeg.input = src;
+    jpeg.output = out;
+    jpeg.data_offset = BMP_HEADER_LEN;
+
+    if(esp_jpg_decode(src_len, JPG_SCALE_NONE, _jpg_read, _rgb_write_preallocated, (void*)&jpeg) != ESP_OK){
+        return false;
+    }
+
+    size_t output_size = jpeg.width*jpeg.height*3;
+
+    jpeg.output[0] = 'B';
+    jpeg.output[1] = 'M';
+    bmp_header_t * bitmap  = (bmp_header_t*)&jpeg.output[2];
+    bitmap->reserved = 0;
+    bitmap->filesize = output_size+BMP_HEADER_LEN;
+    bitmap->fileoffset_to_pixelarray = BMP_HEADER_LEN;
+    bitmap->dibheadersize = 40;
+    bitmap->width = jpeg.width;
+
+    // By default, the BMP format stores pixel rows in a bottom-up order
+    // (lowermost row first, uppermost row last). A negative height indicates
+    // that the opposite order is in effect. This is a not very well documented
+    // format extension introduced by Windows. Most image viewers support it and
+    // will display the image correctly at all times (e.g. HTML img tags), but
+    // not all (e.g. `feh` on Linux). In this case the JPG decoder produces a
+    // top-down order, which is what we need. Therefore the height should be
+    // negative, but we're not directly displaying the image and we'd need to
+    // flip the height back to positive anyway because we want to know the
+    // value.
+    bitmap->height = jpeg.height;
+    bitmap->planes = 1;
+    bitmap->bitsperpixel = 24;
+    bitmap->compression = 0;
+    bitmap->imagesize = output_size;
+    bitmap->ypixelpermeter = 0x0B13 ; //2835 , 72 DPI
+    bitmap->xpixelpermeter = 0x0B13 ; //2835 , 72 DPI
+    bitmap->numcolorspallette = 0;
+    bitmap->mostimpcolor = 0;
+
+    return true;
 }
