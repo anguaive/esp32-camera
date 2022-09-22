@@ -455,18 +455,7 @@ bool jpg2bmp_preallocated(camera_fb_t *fb, uint8_t *out) {
     bitmap->fileoffset_to_pixelarray = BMP_HEADER_LEN;
     bitmap->dibheadersize = 40;
     bitmap->width = jpeg.width;
-
-    // By default, the BMP format stores pixel rows in a bottom-up order
-    // (lowermost row first, uppermost row last). A negative height indicates
-    // that the opposite order is in effect. This is a not very well documented
-    // format extension introduced by Windows. Most image viewers support it and
-    // will display the image correctly at all times (e.g. HTML img tags), but
-    // not all (e.g. `feh` on Linux). In this case the JPG decoder produces a
-    // top-down order, which is what we need. Therefore the height should be
-    // negative, but we're not directly displaying the image and we'd need to
-    // flip the height back to positive anyway because we want to know the
-    // value.
-    bitmap->height = jpeg.height;
+    bitmap->height = -jpeg.height;
     bitmap->planes = 1;
     bitmap->bitsperpixel = 24;
     bitmap->compression = 0;
